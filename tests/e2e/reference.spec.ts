@@ -1,0 +1,70 @@
+import { expect, test } from '@playwright/test';
+import path from 'node:path';
+
+test('reference is a persistent guide independent of the layer stack', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('input[type=file]').setInputFiles(path.resolve('test-images/character.png'));
+  await expect(page.getByTestId('layer-row')).toHaveCount(1);
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Set as Reference' }).click();
+  await (await chooser).setFiles(path.resolve('test-images/reference.png'));
+  await expect(page.getByTestId('reference-overlay')).toBeVisible();
+  await expect(page.getByTestId('layer-row')).toHaveCount(1);
+  await page.getByLabel('Reference opacity').fill('33');
+  await expect(page.getByTestId('reference-overlay')).toHaveCSS('opacity', '0.33');
+  await page.getByLabel('Show reference overlay').uncheck();
+  await expect(page.getByTestId('reference-overlay')).toHaveCount(0);
+  await page.getByRole('button', { name: /Save/ }).click();
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId('layer-row')).toHaveCount(1);
+  await expect(page.getByLabel('Reference opacity')).toHaveValue('33');
+  await expect(page.getByLabel('Show reference overlay')).not.toBeChecked();
+  await page.getByLabel('Show reference overlay').check();
+  await expect(page.getByTestId('reference-overlay')).toBeVisible();
+  await expect(page.getByTestId('reference-overlay')).toHaveCSS('opacity', '0.33');
+  const replacement = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Set as Reference' }).click();
+  await (await replacement).setFiles(path.resolve('test-images/jungle.png'));
+  await expect(page.getByText('Guide: jungle.png')).toBeVisible();
+  await expect(page.getByTestId('layer-row')).toHaveCount(1);
+  await page.getByRole('button', { name: /Save/ }).click();
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('Guide: jungle.png')).toBeVisible();
+  await expect(page.getByTestId('reference-overlay')).toBeVisible();
+});
+
+test('actual artwork produces reviewable alignment proposals without changing layers until applied', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto('/');
+  await page.locator('input[type=file]').setInputFiles(['background.png','foreground.png','character.png','jungle.png'].map(name => path.resolve('test-images', name)));
+  await expect(page.getByTestId('layer-row')).toHaveCount(4);
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Set as Reference' }).click();
+  await (await chooser).setFiles(path.resolve('test-images/reference.png'));
+  await expect(page.getByTestId('reference-overlay')).toBeVisible();
+  await page.getByText('background.png', { exact: true }).click();
+  await page.getByLabel('Position X', { exact: true }).fill('700');
+  await page.getByRole('button', { name: 'Arrange Layers' }).click();
+  await expect(page.getByText('Arrangement results (4 analysed)')).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByLabel('Position X', { exact: true })).toHaveValue('700');
+  console.log('Real artwork:', await page.locator('.alignment-controls li').allTextContents());
+  page.once('dialog', dialog => void dialog.accept());
+  await page.getByRole('button', { name: 'Apply reliable proposals' }).click();
+  await expect(page.getByLabel('Position X', { exact: true })).toHaveValue('700'); // low-confidence background was not altered
+  await page.getByTestId('layer-row').filter({ hasText: 'foreground.png' }).click();
+  await expect(page.getByLabel('Scale', { exact: true })).toHaveValue('1.41');
+  await page.screenshot({ path: 'screenshots/reference-proposals.png', fullPage: true });
+  page.once('dialog', dialog => void dialog.accept());
+  await page.getByRole('button', { name: 'Restore previous transforms' }).click();
+  await expect(page.getByLabel('Scale', { exact: true })).toHaveValue('1');
+  await page.getByLabel('Scale', { exact: true }).fill('1.41'); // manual correction remains possible
+  await page.getByRole('button', { name: /Save/ }).click();
+  await expect(page.getByText('All changes saved')).toBeVisible();
+  await page.reload();
+  await page.getByTestId('layer-row').filter({ hasText: 'foreground.png' }).click();
+  await expect(page.getByLabel('Scale', { exact: true })).toHaveValue('1.41');
+  await page.getByText('background.png', { exact: true }).click();
+  await expect(page.getByLabel('Position X', { exact: true })).toHaveValue('700');
+});

@@ -1,0 +1,5 @@
+import { describe, expect, it } from 'vitest';
+import { emptyProject } from '../../src/store/project-store';
+import { updateLayer } from '../../src/features/layers/layer-operations';
+import { createLayer } from '../../src/features/layers/layer-operations';
+describe('project format',()=>{it('serializes and deserializes project data without losing edit state',()=>{let project=emptyProject('Forest');const layer=createLayer({name:'Pine',assetId:'img1',width:420,height:600,x:20,y:30,scale:1.25,rotation:12,opacity:.4,visible:false,locked:true,depth:9});project={...project,layerIds:[layer.id],layers:{[layer.id]:layer}};const restored=JSON.parse(JSON.stringify(project));expect(restored).toEqual(project);});it('retains independent layer property updates',()=>{const a=createLayer({name:'A',assetId:'a',width:1,height:1,x:0,y:0,scale:1,rotation:0,opacity:1,visible:true,locked:false,depth:0});const b={...a,id:'b',name:'B'};const p={...emptyProject(),layerIds:[a.id,b.id],layers:{[a.id]:a,b}};expect(updateLayer(p,a.id,{opacity:.5}).layers.b.opacity).toBe(1);});});
